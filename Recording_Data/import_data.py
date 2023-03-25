@@ -1,4 +1,3 @@
-import serial 
 import time
 import glob
 import sys
@@ -8,7 +7,7 @@ import signal
 from datetime import datetime
 from multiprocessing import Process
 
-import numpy as np
+#import numpy as np
 import tornado.httpserver
 import tornado.websocket
 import tornado.ioloop
@@ -17,7 +16,7 @@ import socket
 import multiprocessing
 import math
 import random
-import thread
+import _thread
 import serial 
 
 '''
@@ -27,7 +26,12 @@ Please run `pip install tornado` with python of version 2.7.9 or greater to inst
 Run it with `python detector-server.py`
 Written by Pawel Przewlocki (pawel.przewlocki@ncbj.gov.pl).
 Based on http://fabacademy.org/archives/2015/doc/WebSocketConsole.html
-''' 
+'''
+
+global ComPort
+ComPort = None
+global file
+file = None
 
 def print_help1():
     print('\n===================== HELP =======================')
@@ -62,10 +66,13 @@ class DataCollectionProcess(multiprocessing.Process):
         return -math.log(1.0 - random.random()) / rate
 
 def RUN(bg):
-    print 'Running...'
+    print('Running...')
     while True:
         data = bg.comport.readline()
-        bg.queue.put(str(datetime.now())+" "+data)
+        try:
+        	bg.queue.put(str(datetime.now())+" "+data.decode("utf-8"))
+        except:
+        	print("Bad Line!")
     
 class WSHandler(tornado.websocket.WebSocketHandler):
     def __init__ (self, application, request, **kwargs):
@@ -73,12 +80,12 @@ class WSHandler(tornado.websocket.WebSocketHandler):
         self.sending = False
 
     def open(self):
-        print 'New connection opened from ' + self.request.remote_ip
+        print('New connection opened from ' + self.request.remote_ip)
         clients.append(self)
-        print '%d clients connected' % len(clients)
+        print('%d clients connected' % len(clients))
       
     def on_message(self, message):
-        print 'message received:  %s' % message
+        print('message received:  %s' % message)
         if message == 'StartData':
             self.sending = True
         if message == 'StopData':
@@ -87,8 +94,8 @@ class WSHandler(tornado.websocket.WebSocketHandler):
     def on_close(self):
         self.sending = False
         clients.remove(self)
-        print 'Connection closed from ' + self.request.remote_ip
-        print '%d clients connected' % len(clients)
+        print('Connection closed from ' + self.request.remote_ip)
+        print('%d clients connected' % len(clients))
  
     def check_origin(self, origin):
         return True
@@ -103,10 +110,13 @@ def checkQueue():
  
 
 def signal_handler(signal, frame):
-        print('You pressed Ctrl+C!')
-        ComPort.close()     
-        file.close() 
-        sys.exit(0)
+	print('You pressed Ctrl+C!')
+	if ComPort:
+		ComPort.close()
+	if file:
+		file.close()
+	sys.exit(0)
+
 def serial_ports():
     """ Lists serial port names
 
@@ -148,7 +158,7 @@ print("[3] Remove files from SD card")
 print("[4] Connect to server: www.cosmicwatch.lns.mit.edu")
 print("[h] Help")
 
-mode = str(raw_input("\nSelected operation: "))
+mode = str(input("\nSelected operation: "))
 
 if mode == 'h':
     print_help1()
@@ -169,7 +179,7 @@ for i in range(len(port_list)):
     print('['+str(i+1)+'] ' + str(port_list[i]))
 print('[h] help\n')
 
-ArduinoPort = raw_input("Selected Arduino port: ")
+ArduinoPort = input("Selected Arduino port: ")
 
 ArduinoPort = ArduinoPort.split(',')
 nDetectors = len(ArduinoPort)
@@ -198,7 +208,7 @@ for i in range(nDetectors):
 
 if mode == 1:
 	cwd = os.getcwd()
-	fname = raw_input("Enter file name (default: "+cwd+"/CW_data.txt):")
+	fname = input("Enter file name (default: "+cwd+"/CW_data.txt):")
 
 	detector_name_list = []
 	
@@ -207,7 +217,7 @@ if mode == 1:
 
 	print('Saving data to: '+fname)
 
-	ComPort_list = np.ones(nDetectors)
+	#ComPort_list = np.ones(nDetectors)
 	for i in range(nDetectors):
 		signal.signal(signal.SIGINT, signal_handler)
 		globals()['Det%s' % str(i)] = serial.Serial(str(port_name_list[i]))
@@ -221,14 +231,14 @@ if mode == 1:
 
 		counter = 0
 
-		header1 = globals()['Det%s' % str(i)].readline()     # Wait and read data 
-		if 'SD initialization failed' in header1:
+		header1 = globals()['Det%s' % str(i)].readline()     # Wait and read data
+		if 'SD initialization failed' in header1.decode():
 			print('...SDCard.ino detected.')
 			print('...SDcard initialization failed.')
 			# This happens if the SDCard.ino is uploaded but it doesn't see an sdcard.
 			header1a = globals()['Det%s' % str(i)].readline()
 			header1 = globals()['Det%s' % str(i)].readline()
-		if 'CosmicWatchDetector' in header1:
+		if 'CosmicWatchDetector' in header1.decode():
 			print('...SDCard.ino code detected.')
 			print('...SDcard intialized correctly.')
 			# This happens if the SDCar.ino is uploaded and it sees an sdcard.
@@ -241,20 +251,24 @@ if mode == 1:
 		header3 = globals()['Det%s' % str(i)].readline()     # Wait and read data 
 		header4 = globals()['Det%s' % str(i)].readline()     # Wait and read data 
 		header5 = globals()['Det%s' % str(i)].readline()     # Wait and read data 
+		
+		try:
+			det_name = globals()['Det%s' % str(i)].readline().decode().strip()
+			#print(det_name)
+			if 'Device ID: ' in det_name:
+				det_name = det_name.split('Device ID: ')[-1]
+			detector_name_list.append(det_name)    # Wait and read data 
+		except UnicodeDecodeError:
+			print("Error decoding detector name - has this module been given one?")
+			detector_name_list.append("Unknown_Detector")
 
-		det_name = globals()['Det%s' % str(i)].readline().replace('\r\n','')
-		#print(det_name)
-		if 'Device ID: ' in det_name:
-			det_name = det_name.split('Device ID: ')[-1]
-		detector_name_list.append(det_name)    # Wait and read data 
 
-
-	file = open(fname, "w",0)
-	file.write(header1)
-	file.write(header2)
-	file.write(header3)
-	file.write(header4)
-	file.write(header5)
+	file = open(fname, "w")
+	file.write(header1.decode())
+	file.write(header2.decode())
+	file.write(header3.decode())
+	file.write(header4.decode())
+	file.write(header5.decode())
 
 	string_of_names = ''
 	print("\n-- Detector Names --")
@@ -286,9 +300,12 @@ if mode == 1:
 	while True:
 		for i in range(nDetectors):
 			if globals()['Det%s' % str(i)].inWaiting():
-				data = globals()['Det%s' % str(i)].readline().replace('\r\n','')    # Wait and read data 
+				#data = globals()['Det%s' % str(i)].readline().replace(
+				# '\r\n','')    # Wait and read data
+				data = globals()['Det%s' % str(i)].readline().decode(
+					).strip()	# Wait and read data
 				file.write(str(datetime.now())+" "+data+" "+detector_name_list[i]+'\n')
-				globals()['Det%s' % str(i)].write('got-it') 
+				globals()['Det%s' % str(i)].write(str.encode('got-it'))
 
 	for i in range(nDetectors):
 		globals()['Det%s' % str(i)].close()     
@@ -297,7 +314,7 @@ if mode == 1:
 if mode == 2:
 	
 	cwd = os.getcwd()
-	dir_path = raw_input("\nEnter location to save SD data (default: "+cwd+"/SDFiles):")
+	dir_path = input("\nEnter location to save SD data (default: "+cwd+"/SDFiles):")
 	if dir_path == '':
 		dir_path = cwd+"/SDFiles"
 	
@@ -354,7 +371,7 @@ if mode == 2:
 
 if mode == 3:
     print("\nAre you sure that you want to remove all files from SD card?")
-    ans = raw_input("Type y or n: ")
+    ans = input("Type y or n: ")
     if ans == 'y' or ans == 'yes' or ans == 'Y' or ans == 'YES':
         signal.signal(signal.SIGINT, signal_handler)
         ComPort = serial.Serial(port_name_list[0]) # open the COM Port
@@ -391,9 +408,9 @@ if mode == 4:
     bg = DataCollectionProcess(queue) 
     #bg.daemon = True
     #bg.start()
-    thread.start_new_thread(RUN,(bg,)) 
-    #p=multiprocessing.Process(target=RUN)
-    #p.start()
+    #thread.start_new_thread(RUN,(bg,)) 
+    p=multiprocessing.Process(target=RUN, args=(bg,))
+    p.start()
     #server stuff
     application = tornado.web.Application(
         handlers=[(r'/', WSHandler)]
@@ -402,8 +419,8 @@ if mode == 4:
     port = 9090
     http_server.listen(port)
     myIP = socket.gethostbyname(socket.gethostname())
-    print 'CosmicWatch detector server started at %s:%d' % (myIP, port)
-    print 'You can now connect to your device using http://cosmicwatch.lns.mit.edu/'
+    print('CosmicWatch detector server started at %s:%d' % (myIP, port))
+    print('You can now connect to your device using http://cosmicwatch.lns.mit.edu/')
     mainLoop = tornado.ioloop.IOLoop.instance()
     #in the main loop fire queue check each 100ms
     try:
