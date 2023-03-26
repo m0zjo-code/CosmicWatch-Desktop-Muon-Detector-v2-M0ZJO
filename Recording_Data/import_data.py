@@ -19,6 +19,8 @@ import random
 import _thread
 import serial 
 
+import string, random
+
 '''
 This is a Websocket server that forwards signals from the detector to any client connected.
 It requires Tornado python library to work properly.
@@ -144,6 +146,9 @@ def serial_ports():
         except (OSError, serial.SerialException):
             pass
     return result
+    
+def id_generator(size=6, chars=string.ascii_uppercase + string.digits):
+	return ''.join(random.choice(chars) for _ in range(size))
 
 #If the Arduino is not recognized by your MAC, make sure you have
 #   installed the drivers for the Arduino (CH340g driver). Windows and Linux don't need it.
@@ -260,7 +265,12 @@ if mode == 1:
 			detector_name_list.append(det_name)    # Wait and read data 
 		except UnicodeDecodeError:
 			print("Error decoding detector name - has this module been given one?")
-			detector_name_list.append("Unknown_Detector")
+			print('You should name your CosmicWatch Detector first.')
+			print('Simply change the DetName variable in the Naming.ino script,')
+			print('and upload the code to your Arduino.')
+			print('For now, a temporary name has been allocated.')
+			
+			detector_name_list.append("Unknown_Detector_"+id_generator())
 
 
 	file = open(fname, "w")
@@ -275,12 +285,6 @@ if mode == 1:
 	#print(detector_name_list)
 	for i in range(len(detector_name_list)):
 		print(detector_name_list[i])
-		if '\xff' in detector_name_list[i] or '?' in detector_name_list[i] :
-			print('--- Error ---')
-			print('You should name your CosmicWatch Detector first.')
-			print('Simply change the DetName variable in the Naming.ino script,')
-			print('and upload the code to your Arduino.')
-			print('Exiting ...')
 
 	print("\nTaking data ...")
 	print("Press ctl+c to terminate process")
